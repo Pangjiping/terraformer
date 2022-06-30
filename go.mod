@@ -107,7 +107,7 @@ require (
 	github.com/ddelnano/terraform-provider-mikrotik/client v0.0.0-20210401060029-7f652169b2c4
 	github.com/ddelnano/terraform-provider-xenorchestra/client v0.0.0-20210401070256-0d721c6762ef
 	github.com/denisenkom/go-mssqldb v0.10.0 // indirect
-	github.com/denverdino/aliyungo v0.0.0-20200327235253-d59c209c7e93
+	github.com/denverdino/aliyungo v0.0.0-20220610083100-ab5f747cb559
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/digitalocean/godo v1.57.0
 	github.com/docker/go-connections v0.4.0 // indirect

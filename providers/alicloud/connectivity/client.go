@@ -42,6 +42,7 @@ type AliyunClient struct {
 	dnsconn                      *alidns.Client
 	ramconn                      *ram.Client
 	pvtzconn                     *pvtz.Client
+	csconn                       *cs.Client
 	tablestoreconnByInstanceName map[string]*tablestore.TableStoreClient
 	csprojectconnByKey           map[string]*cs.ProjectClient
 }
@@ -49,9 +50,9 @@ type AliyunClient struct {
 type APIVersion string
 
 const DefaultClientRetryCountSmall = 5
-const Terraform = "HashiCorp-Terraform"
-const Provider = "Terraform-Provider"
-const Module = "Terraform-Module"
+const Terraformer = "GoogleCloudPlatform-Terraformer"
+const Provider = "Terraformer-Provider"
+const Module = "Terraformer-Module"
 
 var goSdkMutex = sync.RWMutex{} // The Go SDK is not thread-safe
 // The main version number that is being run at the moment.
@@ -110,7 +111,7 @@ func (client *AliyunClient) WithEcsClient(do func(*ecs.Client) (interface{}, err
 		if _, err := ecsconn.DescribeRegions(ecs.CreateDescribeRegionsRequest()); err != nil {
 			return nil, err
 		}
-		ecsconn.AppendUserAgent(Terraform, terraformVersion)
+		ecsconn.AppendUserAgent(Terraformer, terraformVersion)
 		ecsconn.AppendUserAgent(Provider, providerVersion)
 		if client.config.ConfigurationSource != "" {
 			ecsconn.AppendUserAgent(Module, client.config.ConfigurationSource)
@@ -142,7 +143,7 @@ func (client *AliyunClient) WithRdsClient(do func(*rds.Client) (interface{}, err
 			return nil, fmt.Errorf("unable to initialize the RDS client: %#v", err)
 		}
 
-		rdsconn.AppendUserAgent(Terraform, terraformVersion)
+		rdsconn.AppendUserAgent(Terraformer, terraformVersion)
 		rdsconn.AppendUserAgent(Provider, providerVersion)
 		if client.config.ConfigurationSource != "" {
 			rdsconn.AppendUserAgent(Module, client.config.ConfigurationSource)
@@ -174,7 +175,7 @@ func (client *AliyunClient) WithSlbClient(do func(*slb.Client) (interface{}, err
 			return nil, fmt.Errorf("unable to initialize the SLB client: %#v", err)
 		}
 
-		slbconn.AppendUserAgent(Terraform, terraformVersion)
+		slbconn.AppendUserAgent(Terraformer, terraformVersion)
 		slbconn.AppendUserAgent(Provider, providerVersion)
 		if client.config.ConfigurationSource != "" {
 			slbconn.AppendUserAgent(Module, client.config.ConfigurationSource)
@@ -206,7 +207,7 @@ func (client *AliyunClient) WithVpcClient(do func(*vpc.Client) (interface{}, err
 			return nil, fmt.Errorf("unable to initialize the VPC client: %#v", err)
 		}
 
-		vpcconn.AppendUserAgent(Terraform, terraformVersion)
+		vpcconn.AppendUserAgent(Terraformer, terraformVersion)
 		vpcconn.AppendUserAgent(Provider, providerVersion)
 		if client.config.ConfigurationSource != "" {
 			vpcconn.AppendUserAgent(Module, client.config.ConfigurationSource)
@@ -238,7 +239,7 @@ func (client *AliyunClient) WithDNSClient(do func(*alidns.Client) (interface{}, 
 		if err != nil {
 			return nil, fmt.Errorf("unable to initialize the DNS client: %#v", err)
 		}
-		dnsconn.AppendUserAgent(Terraform, terraformVersion)
+		dnsconn.AppendUserAgent(Terraformer, terraformVersion)
 		dnsconn.AppendUserAgent(Provider, providerVersion)
 		if client.config.ConfigurationSource != "" {
 			dnsconn.AppendUserAgent(Module, client.config.ConfigurationSource)
@@ -273,7 +274,7 @@ func (client *AliyunClient) WithRAMClient(do func(*ram.Client) (interface{}, err
 		if err != nil {
 			return nil, fmt.Errorf("unable to initialize the RAM client: %#v", err)
 		}
-		ramconn.AppendUserAgent(Terraform, terraformVersion)
+		ramconn.AppendUserAgent(Terraformer, terraformVersion)
 		ramconn.AppendUserAgent(Provider, providerVersion)
 		if client.config.ConfigurationSource != "" {
 			ramconn.AppendUserAgent(Module, client.config.ConfigurationSource)
@@ -310,7 +311,7 @@ func (client *AliyunClient) WithPvtzClient(do func(*pvtz.Client) (interface{}, e
 			return nil, fmt.Errorf("unable to initialize the PVTZ client: %#v", err)
 		}
 
-		pvtzconn.AppendUserAgent(Terraform, terraformVersion)
+		pvtzconn.AppendUserAgent(Terraformer, terraformVersion)
 		pvtzconn.AppendUserAgent(Provider, providerVersion)
 		if client.config.ConfigurationSource != "" {
 			pvtzconn.AppendUserAgent(Module, client.config.ConfigurationSource)
@@ -319,6 +320,31 @@ func (client *AliyunClient) WithPvtzClient(do func(*pvtz.Client) (interface{}, e
 	}
 
 	return do(client.pvtzconn)
+}
+
+func (client *AliyunClient) WithCsClient(do func(*cs.Client) (interface{}, error)) (interface{}, error) {
+	goSdkMutex.Lock()
+	defer goSdkMutex.Unlock()
+
+	// Init CS client if necessary
+	if client.csconn == nil {
+		csconn := cs.NewClientForAussumeRole(client.config.AccessKey, client.config.SecretKey, client.config.SecurityToken)
+		csconn.SetUserAgent(client.getUserAgent())
+		endpoint := client.config.CsEndpoint
+		if endpoint == "" {
+			endpoint = loadEndpoint(client.config.RegionID, CONTAINCode)
+		}
+		if endpoint != "" {
+			if !strings.HasPrefix(endpoint, "http") {
+				endpoint = fmt.Sprintf("https://%s", strings.TrimPrefix(endpoint, "://"))
+			}
+			csconn.SetEndpoint(endpoint)
+		}
+		// csconn.SetSourceIp() TODO: add config SourceIp
+		// csconn.SetSecureTransport() TODO: add config SecureTransport
+		client.csconn = csconn
+	}
+	return do(client.csconn)
 }
 
 func (client *AliyunClient) getSdkConfig() *sdk.Config {
@@ -362,4 +388,8 @@ func (client *AliyunClient) getHTTPProxyURL() *url.URL {
 		}
 	}
 	return nil
+}
+
+func (client *AliyunClient) getUserAgent() string {
+	return fmt.Sprintf("%s/%s %s/%s %s/%s", Terraformer, terraformVersion, Provider, providerVersion, Module, client.config.ConfigurationSource)
 }
